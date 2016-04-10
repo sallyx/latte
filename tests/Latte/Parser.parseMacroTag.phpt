@@ -23,6 +23,7 @@ Assert::same(['?', '/', '', FALSE], $parser->parseMacroTag('? / '));
 Assert::same(['=', '$var', '', FALSE], $parser->parseMacroTag('$var'));
 Assert::same(['=', '$var', '|noescape', FALSE], $parser->parseMacroTag('$var|noescape'));
 Assert::same(['=', '$var', '|noescape', TRUE], $parser->parseMacroTag('$var|noescape/'));
+Assert::same(['=', '$var||false', '', FALSE], $parser->parseMacroTag('$var||false'));
 Assert::same(['_', '"I love Nette"', '|noescape', FALSE], $parser->parseMacroTag('_"I love Nette"|noescape'));
 Assert::same(['_', '$var', '', FALSE], $parser->parseMacroTag('_$var'));
 Assert::same(['_', '$var', '', FALSE], $parser->parseMacroTag('_ $var'));
@@ -53,3 +54,4 @@ Assert::same(['=', '-10', '', FALSE], $parser->parseMacroTag('-10'));
 
 Assert::same(['=', '$var', "|mod:'\\':a:b:c':arg2 |mod2:|mod3", FALSE], $parser->parseMacroTag("\$var |mod:'\\':a:b:c':arg2 |mod2:|mod3"));
 Assert::same(['=', '$var', '|mod|mod2|noescape', FALSE], $parser->parseMacroTag('$var|mod|mod2|noescape'));
+Assert::same(['=', "'a|b\\'c'", '', FALSE], $parser->parseMacroTag("'a|b\\'c'"));

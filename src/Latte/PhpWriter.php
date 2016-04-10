@@ -44,7 +44,7 @@ class PhpWriter
 	 * @param  string
 	 * @return string
 	 */
-	public function write($mask, ...$args)
+	public function write($mask)
 	{
 		$mask = preg_replace('#%(node|\d+)\.#', '%$1_', $mask);
 		$mask = preg_replace_callback('#%escape(\(([^()]*+|(?1))+\))#', function ($m) {
@@ -54,6 +54,7 @@ class PhpWriter
 			return $this->formatModifiers(substr($m[1], 1, -1));
 		}, $mask);
 
+		$args = func_get_args();
 		$pos = $this->tokens->position;
 		$word = strpos($mask, '%node_word') === FALSE ? NULL : $this->tokens->fetchWord();
 
@@ -65,9 +66,9 @@ class PhpWriter
 				case 'node_':
 					$arg = $word; break;
 				case '':
-					$arg = each($args)[1]; break;
+					$arg = next($args); break;
 				default:
-					$arg = $args[(int) $source]; break;
+					$arg = $args[$source + 1]; break;
 			}
 
 			switch ($format) {
@@ -76,8 +77,8 @@ class PhpWriter
 				case 'args':
 					$code = $this->formatArgs(); break;
 				case 'array':
-					$code = $this->formatArgs();
-					$code = $cond && $code === '' ? '' : "[$code]"; break;
+					$code = $this->formatArray();
+					$code = $cond && $code === '[]' ? '' : $code; break;
 				case 'var':
 					$code = var_export($arg, TRUE); break;
 				case 'raw':
@@ -123,10 +124,16 @@ class PhpWriter
 	}
 
 
-	/** @deprecated */
+	/**
+	 * Formats macro arguments to PHP array. (It advances tokenizer to the end as a side effect.)
+	 * @return string
+	 */
 	public function formatArray(MacroTokens $tokens = NULL)
 	{
-		return '[' . $this->formatArgs($tokens) . ']';
+		$tokens = $this->preprocess($tokens);
+		$tokens = $this->expandFilter($tokens);
+		$tokens = $this->quoteFilter($tokens);
+		return $tokens->joinAll();
 	}
 
 
@@ -152,7 +159,6 @@ class PhpWriter
 		$tokens = $tokens === NULL ? $this->tokens : $tokens;
 		$tokens = $this->removeCommentsFilter($tokens);
 		$tokens = $this->shortTernaryFilter($tokens);
-		$tokens = $this->expandFilter($tokens);
 		return $tokens;
 	}
 
@@ -208,14 +214,24 @@ class PhpWriter
 	 */
 	public function expandFilter(MacroTokens $tokens)
 	{
-		$res = new MacroTokens;
+		$res = new MacroTokens('[');
+		$expand = NULL;
 		while ($tokens->nextToken()) {
-			if ($tokens->isCurrent('(expand)')) {
-				$tokens->nextAll(MacroTokens::T_WHITESPACE);
-				$res->append('...');
+			if ($tokens->isCurrent('(expand)') && $tokens->depth === 0) {
+				$expand = TRUE;
+				$res->append('],');
+			} elseif ($expand && $tokens->isCurrent(',') && !$tokens->depth) {
+				$expand = FALSE;
+				$res->append(', [');
 			} else {
 				$res->append($tokens->currentToken());
 			}
+		}
+
+		if ($expand === NULL) {
+			$res->append(']');
+		} else {
+			$res->prepend('array_merge(')->append($expand ? ', [])' : '])');
 		}
 		return $res;
 	}
@@ -230,8 +246,8 @@ class PhpWriter
 		$res = new MacroTokens;
 		while ($tokens->nextToken()) {
 			$res->append($tokens->isCurrent(MacroTokens::T_SYMBOL)
-				&& (!$tokens->isPrev() || $tokens->isPrev(',', '(', '[', '=>', ':', '?', '.', '<', '>', '<=', '>=', '===', '!==', '==', '!=', '<>', '&&', '||', '=', 'and', 'or', 'xor'))
-				&& (!$tokens->isNext() || $tokens->isNext(',', ';', ')', ']', '=>', ':', '?', '.', '<', '>', '<=', '>=', '===', '!==', '==', '!=', '<>', '&&', '||', 'and', 'or', 'xor'))
+				&& (!$tokens->isPrev() || $tokens->isPrev(',', '(', '[', '=>', ':', '?', '.', '<', '>', '<=', '>=', '===', '!==', '==', '!=', '<>', '&&', '||', '=', 'and', 'or', 'xor', '??'))
+				&& (!$tokens->isNext() || $tokens->isNext(',', ';', ')', ']', '=>', ':', '?', '.', '<', '>', '<=', '>=', '===', '!==', '==', '!=', '<>', '&&', '||', 'and', 'or', 'xor', '??'))
 				? "'" . $tokens->currentValue() . "'"
 				: $tokens->currentToken()
 			);

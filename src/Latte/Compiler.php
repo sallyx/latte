@@ -222,7 +222,7 @@ class Compiler
 				$this->lastAttrValue = $token->text;
 			}
 		}
-		$this->output .= $token->text;
+		$this->output .= $this->escape($token->text);
 	}
 
 
@@ -348,7 +348,7 @@ class Compiler
 		}
 
 		$this->lastAttrValue = & $this->htmlNode->attrs[$token->name];
-		$this->output .= $token->text;
+		$this->output .= $this->escape($token->text);
 
 		if (in_array($token->value, [self::CONTEXT_SINGLE_QUOTED_ATTR, self::CONTEXT_DOUBLE_QUOTED_ATTR], TRUE)) {
 			$this->lastAttrValue = '';
@@ -382,6 +382,19 @@ class Compiler
 		if (!$isLeftmost) {
 			$this->output .= substr($token->text, strlen(rtrim($token->text, "\n")));
 		}
+	}
+
+
+	private function escape($s)
+	{
+		return preg_replace_callback('#<(\z|\?xml|\?)#', function ($m) {
+			if ($m[1] === '?') {
+				trigger_error('Inline <?php ... ?> is deprecated, use {php ... } on line ' . $this->getLine(), E_USER_DEPRECATED);
+				return '<?';
+			} else {
+				return '<<?php ?>' . $m[1];
+			}
+		}, $s);
 	}
 
 
@@ -564,7 +577,7 @@ class Compiler
 
 		if (empty($this->macros[$name])) {
 			$hint = ($t = Helpers::getSuggestion(array_keys($this->macros), $name)) ? ", did you mean {{$t}}?" : '';
-			throw new CompileException("Unknown macro {{$name}}$hint" . ($inScript ? ' (in JavaScript or CSS, try to put a space after bracket.)' : ''));
+			throw new CompileException("Unknown macro {{$name}}$hint" . ($inScript ? ' (in JavaScript or CSS, try to put a space after bracket or use n:syntax=off)' : ''));
 		}
 
 		if (strpbrk($name, '=~%^&_')) {

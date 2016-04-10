@@ -17,7 +17,7 @@ if (!function_exists($_b->blocks['title'][] = '_%[a-z0-9]+%_title')) { function 
 //
 if (!function_exists($_b->blocks['content'][] = '_%[a-z0-9]+%_content')) { function _%[a-z0-9]+%_content($_b, $_args) { foreach ($_args as $__k => $__v) $$__k = $__v
 ?>	<ul>
-<?php $iterations = 0; foreach ($people as $person) { ?>
+<?php $iterations = 0; if (isset($template->person)) trigger_error('Variable $person overwritten in foreach.', E_USER_NOTICE); foreach ($people as $person) { ?>
 		<li><?php echo Latte\Runtime\Filters::escapeHtml($person, ENT_NOQUOTES) ?></li>
 <?php $iterations++; } ?>
 	</ul>
@@ -32,13 +32,13 @@ if (!function_exists($_b->blocks['content'][] = '_%[a-z0-9]+%_content')) { funct
 
 $_l->extends = "inheritance.parent.latte"; $_g->extended = TRUE;
 
-if ($_l->extends) { ob_start();}
+if ($_l->extends) { ob_start(function () {});}
 
 //
 // main template
 // ?>
 
-<?php ob_start(); $_b->templates['%[a-z0-9]+%']->renderChildTemplate('includeblock.inc.latte', get_defined_vars()); echo rtrim(ob_get_clean()) ?>
+<?php ob_start(function () {}); $_g->includingBlock = isset($_g->includingBlock) ? ++$_g->includingBlock : 1; $_b->templates['%[a-z0-9]+%']->renderChildTemplate('includeblock.inc.latte', get_defined_vars()); $_g->includingBlock--; echo rtrim(ob_get_clean()) ?>
 
 
 <?php if ($_l->extends) { ob_end_clean(); return $template->renderChildTemplate($_l->extends, get_defined_vars()); }

@@ -22,7 +22,7 @@ if (!function_exists($_b->blocks['static'][] = '_%[a-z0-9]+%_static')) { functio
 
 $_l->extends = empty($_g->extended) && isset($_control) && $_control instanceof Nette\Application\UI\Presenter ? $_control->findLayoutTemplateFile() : NULL; $_g->extended = TRUE;
 
-if ($_l->extends) { ob_start();}
+if ($_l->extends) { ob_start(function () {});}
 
 //
 // main template
@@ -33,7 +33,7 @@ $var = 10 ?>
 call_user_func(reset($_b->blocks['static']), $_b, get_defined_vars())  ?>
 
 
-<?php $iterations = 0; foreach ($iterator = $_l->its[] = new Latte\Runtime\CachingIterator(['dynamic', 'static']) as $name) {
+<?php $iterations = 0; if (isset($template->name)) trigger_error('Variable $name overwritten in foreach.', E_USER_NOTICE); foreach ($iterator = $_l->its[] = new Latte\Runtime\CachingIterator(['dynamic', 'static']) as $name) {
 
 //
 // block $name

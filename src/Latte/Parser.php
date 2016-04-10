@@ -16,7 +16,7 @@ class Parser
 	use Strict;
 
 	/** @internal regular expression for single & double quoted PHP string */
-	const RE_STRING = '\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"';
+	const RE_STRING = '\'(?:\\\\.|[^\'\\\\])*+\'|"(?:\\\\.|[^"\\\\])*+"';
 
 	/** @internal regular expression for heredoc and nowdoc */
 	const RE_HEREDOC = '(?:<<<\s*(\'|"|)?([A-Z_]+[A-Z0-9_]*)(\g{-3})(?=\n).*?(\g{-3});?(?=\n))';
@@ -81,23 +81,25 @@ class Parser
 	 */
 	public function parse($input)
 	{
-		$this->offset = 0;
-
 		if (substr($input, 0, 3) === "\xEF\xBB\xBF") { // BOM
 			$input = substr($input, 3);
 		}
+
+		$this->input = $input = str_replace("\r\n", "\n", $input);
+		$this->offset = 0;
+		$this->output = [];
+
 		if (!preg_match('##u', $input)) {
+			preg_match('#(?:[\x00-\x7F]|[\xC0-\xDF][\x80-\xBF]|[\xE0-\xEF][\x80-\xBF]{2}|[\xF0-\xF7][\x80-\xBF]{3})*+#A', $input, $m);
+			$this->offset = strlen($m[0]) + 1;
 			throw new \InvalidArgumentException('Template is not valid UTF-8 stream.');
 		}
-		$input = str_replace("\r\n", "\n", $input);
-		$this->input = $input;
-		$this->output = [];
-		$tokenCount = 0;
 
 		$this->setSyntax($this->defaultSyntax);
 		$this->setContext(self::CONTEXT_HTML_TEXT);
 		$this->lastHtmlTag = $this->syntaxEndTag = NULL;
 
+		$tokenCount = 0;
 		while ($this->offset < strlen($input)) {
 			if ($this->{'context' . $this->context[0]}() === FALSE) {
 				break;
@@ -123,7 +125,7 @@ class Parser
 	private function contextHtmlText()
 	{
 		$matches = $this->match('~
-			(?:(?<=\n|^)[ \t]*)?<(?P<closing>/?)(?P<tag>[a-z0-9:]+)|  ##  begin of HTML tag <tag </tag - ignores <!DOCTYPE
+			(?:(?<=\n|^)[ \t]*)?<(?P<closing>/?)(?P<tag>[a-z][a-z0-9:]*)|  ##  begin of HTML tag <tag </tag - ignores <!DOCTYPE
 			<(?P<htmlcomment>!--(?!>))|     ##  begin of HTML comment <!--, but not <!-->
 			(?P<macro>' . $this->delimiters[0] . ')
 		~xsi');
@@ -173,9 +175,9 @@ class Parser
 	private function contextHtmlTag()
 	{
 		$matches = $this->match('~
-			(?P<end>\ ?/?>)([ \t]*\n)?|  ##  end of HTML tag
+			(?P<end>\s?/?>)([ \t]*\n)?|  ##  end of HTML tag
 			(?P<macro>' . $this->delimiters[0] . ')|
-			\s*(?P<attr>[^\s/><={]+)(?:\s*=\s*(?P<value>["\']|[^\s/>{]+))? ## beginning of HTML attribute
+			\s*(?P<attr>[^\s"\'>/={]+)(?:\s*=\s*(?P<value>["\']|[^\s"\'=<>`{]+))? ## beginning of HTML attribute
 		~xsi');
 
 		if (!empty($matches['end'])) { // end of HTML tag />
@@ -263,9 +265,9 @@ class Parser
 			(?P<comment>\\*.*?\\*' . $this->delimiters[1] . '\n{0,2})|
 			(?P<macro>(?:
 				' . self::RE_STRING . '|'. self::RE_HEREDOC . '|
-				\{(?:' . self::RE_STRING . '|' . self::RE_HEREDOC . '|[^\'"{}])*+\}|
-				[^\'"{}]
-			)+?)
+				\{(?>' . self::RE_STRING . '|' . self::RE_HEREDOC . '|[^\'"{}])*+\}|
+				[^\'"{}]+
+			)++)
 			' . $this->delimiters[1] . '
 			(?P<rmargin>[ \t]*(?=\n))?
 		~xsiA');
@@ -391,8 +393,8 @@ class Parser
 			(
 				(?P<name>\?|/?[a-z]\w*+(?:[.:]\w+)*+(?!::|\(|\\\\))|   ## ?, name, /name, but not function( or class:: or namespace\
 				(?P<noescape>!?)(?P<shortname>/?[=\~#%^&_]?)      ## !expression, !=expression, ...
-			)(?P<args>.*?)
-			(?P<modifiers>\|[a-z](?:' . self::RE_STRING . '|[^\'"])*(?<!/))?
+			)(?P<args>(?:' . self::RE_STRING . '|[^\'"])*?)
+			(?P<modifiers>(?<!\|)\|[a-z](?:' . self::RE_STRING . '|[^\'"/]|/(?=.))*+)?
 			(?P<empty>/?\z)
 		()\z~isx', $tag, $match)) {
 			if (preg_last_error()) {
@@ -427,7 +429,7 @@ class Parser
 	{
 		return $this->offset
 			? substr_count(substr($this->input, 0, $this->offset - 1), "\n") + 1
-			: 0;
+			: 1;
 	}
 
 

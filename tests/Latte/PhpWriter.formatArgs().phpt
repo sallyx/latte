@@ -36,7 +36,7 @@ test(function () { // strings
 	Assert::same("('hello')",  formatArgs('(hello)'));
 	Assert::exception(function () {
 		formatArgs("'\\\\'1, 2, symbol1, symbol2'");
-	}, Latte\CompileException::class, 'Unexpected %a% on line 1, column 27.');
+	}, 'Latte\CompileException', 'Unexpected %a% on line 1, column 27.');
 });
 
 
@@ -56,12 +56,7 @@ test(function () { // short ternary operators
 	Assert::same("(\$first ? 'first' : NULL), \$var ? 'foo' : 'bar', \$var ? 'foo' : NULL",  formatArgs('($first ? first), $var ? foo : bar, $var ? foo'));
 	Assert::same("('a' ? 'b' : NULL) ? ('c' ? 'd' : NULL) : NULL",  formatArgs('(a ? b) ? (c ? d)'));
 	Assert::same("fce() ? 'a' : NULL, fce() ? 'b' : NULL",  formatArgs('fce() ? a, fce() ? b'));
-});
-
-
-test(function () { // variadics/expand operator
-	Assert::same("'item', \$list, ...\$list",  formatArgs('item, $list, ...$list'));
-	Assert::same("'item', \$list, ...\$list",  formatArgs('item, $list, (expand) $list'));
+	Assert::same("fce() ?? 'a'",  formatArgs('fce() ?? a')); //null coalesce is ignored
 });
 
 

@@ -65,6 +65,7 @@ class Engine
 		'firstupper' => 'Latte\Runtime\Filters::firstUpper',
 		'implode' => 'implode',
 		'indent' => 'Latte\Runtime\Filters::indent',
+		'length' => 'Latte\Runtime\Filters::length',
 		'lower' => 'Latte\Runtime\Filters::lower',
 		'nl2br' => 'Latte\Runtime\Filters::nl2br',
 		'number' => 'number_format',
@@ -89,7 +90,11 @@ class Engine
 	{
 		$class = $this->getTemplateClass($name);
 		if (!class_exists($class, FALSE)) {
-			$this->loadCacheFile($name);
+			if ($this->tempDirectory) {
+				$this->loadTemplateFromCache($name);
+			} else {
+				$this->loadTemplate($name);
+			}
 		}
 
 		$template = new $class($params, $this, $name);
@@ -103,9 +108,12 @@ class Engine
 	 */
 	public function renderToString($name, array $params = [])
 	{
-		ob_start();
+		ob_start(function () {});
 		try {
 			$this->render($name, $params);
+		} catch (\Throwable $e) {
+			ob_end_clean();
+			throw $e;
 		} catch (\Exception $e) {
 			ob_end_clean();
 			throw $e;
@@ -164,7 +172,7 @@ class Engine
 
 		$class = $this->getTemplateClass($name);
 		if (!class_exists($class, FALSE)) {
-			$this->loadCacheFile($name);
+			$this->loadTemplateFromCache($name);
 		}
 	}
 
@@ -172,14 +180,14 @@ class Engine
 	/**
 	 * @return void
 	 */
-	private function loadCacheFile($name)
+	private function loadTemplateFromCache($name)
 	{
-		if (!$this->tempDirectory) {
-			eval('?>' . $this->compile($name));
-			return;
-		}
-
 		$file = $this->getCacheFile($name);
+
+		$lock = NULL;
+		if (defined('PHP_WINDOWS_VERSION_BUILD') && ($lock = @fopen("$file.lock", 'c'))) { // @ - file may not exist
+			flock($lock, LOCK_SH);
+		}
 
 		if (!$this->isExpired($file, $name) && (@include $file) !== FALSE) { // @ - file may not exist
 			return;
@@ -189,24 +197,41 @@ class Engine
 			@mkdir($this->tempDirectory); // @ - directory may already exist
 		}
 
-		$handle = fopen("$file.lock", 'c+');
-		if (!$handle || !flock($handle, LOCK_EX)) {
+		$lock = $lock ?: fopen("$file.lock", 'c');
+		if (!$lock || !flock($lock, LOCK_EX)) {
 			throw new \RuntimeException("Unable to acquire exclusive lock '$file.lock'.");
 		}
 
 		if (!is_file($file) || $this->isExpired($file, $name)) {
-			$code = $this->compile($name);
+			$code = $this->loadTemplate($name);
 			if (file_put_contents("$file.tmp", $code) !== strlen($code) || !rename("$file.tmp", $file)) {
 				@unlink("$file.tmp"); // @ - file may not exist
 				throw new \RuntimeException("Unable to create '$file'.");
 			}
-		}
 
-		if ((include $file) === FALSE) {
+		} elseif ((include $file) === FALSE) {
 			throw new \RuntimeException("Unable to load '$file'.");
 		}
 
-		flock($handle, LOCK_UN);
+		flock($lock, LOCK_UN);
+	}
+
+
+	/**
+	 * @return string
+	 */
+	private function loadTemplate($name)
+	{
+		$code = $this->compile($name);
+		try {
+			if (@eval('?>' . $code) === FALSE) { // @ is escalated to exception
+				$error = error_get_last();
+				throw (new CompileException('Error in template: ' . $error['message']))->setSource($code, $error['line'], $name . ' (compiled)');
+			}
+		} catch (\ParseError $e) {
+			throw (new CompileException('Error in template: ' . $e->getMessage(), 0, $e))->setSource($code, $e->getLine(), $name . ' (compiled)');
+		}
+		return $code;
 	}
 
 
